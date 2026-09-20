@@ -6,6 +6,25 @@
 ![CI](https://github.com/<owner>/<repo>/actions/workflows/ci.yml/badge.svg)      
 
 
+## gimme-the-diagram
+
+A terminal (Textual) SQL schema visualizer. Load a schema either by pasting/loading raw
+DDL (`CREATE TABLE`/`ALTER TABLE`) or by connecting live to a PostgreSQL/SQLite database,
+and browse it as an ERD: tables, columns with types, and one-to-one / one-to-many /
+many-to-many relationships (auto-detected, including many-to-many junction tables).
+
+- Show/hide tables from the sidebar checklist.
+- Pan and drag tables to rearrange the diagram; the arrangement is persisted to a
+  `<source>.layout.json` sidecar file and restored on the next run.
+- Zoom in/out via the mouse wheel, the `+`/`-` keys, or the toolbar buttons (controls the
+  level of detail shown per table).
+- Export to Mermaid (`erDiagram`, embeddable in Markdown) or to a monospace, terminal-faithful
+  PDF — either just what's currently visible or the whole diagram.
+
+```bash
+gimme-the-diagram
+```
+
 ## boilerplate
 - python3.14
 - textual (tui)

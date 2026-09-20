@@ -16,10 +16,12 @@ dependencies = [
     "pytest-cov>=7.0.0",
     "pytest>=9.0.2",
     "python-dotenv>=1.2.1",
+    "reportlab>=5.0.1",
     "requests>=2.32.5",
     "rich-pixels>=3.0.1",
     "ruff>=0.14.14",
     "sqlalchemy>=2.0.46",
+    "sqlglot>=30.18.0",
     "textual-dev>=1.8.0",
     "textual>=7.4.0",
     "types-requests>=2.32.4.20260107",
@@ -72,7 +74,7 @@ disable_error_code = ["call-overload", "arg-type", "type-arg", "var-annotated", 
 mypy_path = "stubs"
 
 [[tool.mypy.overrides]]
-module = ["textual.*", "dotenv.*", "rich_pixels.*", "alembic.*"]
+module = ["textual.*", "dotenv.*", "rich_pixels.*", "alembic.*", "reportlab.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
@@ -82,4 +84,5 @@ addopts = "--cov=gimme_the_diagram --cov-report=term-missing --cov-report=html"
 [dependency-groups]
 dev = [
     "pre-commit>=4.5.1",
+    "pytest-asyncio>=1.4.0",
 ]
