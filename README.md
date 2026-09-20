@@ -1,0 +1,102 @@
+![Python 3.14+](https://img.shields.io/badge/python-3.14+-blue?logo=python&logoColor=white)
+![uv](https://img.shields.io/badge/uv-package%20manager-blueviolet?logo=astral&logoColor=white)
+![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)
+![mypy](https://img.shields.io/badge/type%20checker-mypy%20strict-blue?logo=python&logoColor=white)
+![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)
+![CI](https://github.com/<owner>/<repo>/actions/workflows/ci.yml/badge.svg)      
+
+
+## boilerplate
+- python3.14
+- textual (tui)
+- sqlalchemy / alembic
+- uv
+- mypy
+- ruff
+- pre-commit (run ruff and mypy)
+- minimal github action for linting / test
+- PyPA-compliant `src` layout, packaged with hatchling, installable as a `gimme-the-diagram` CLI
+
+### Project layout
+
+```
+.
+├── alembic/                        # migrations (not part of the distributed package)
+├── src/
+│   └── gimme_the_diagram/        # the installable package
+│       ├── db/
+│       ├── model/
+│       └── main.py                 # Textual app + `run()` entry point
+├── tests/                          # kept out of src/, per PyPA recommendations
+└── pyproject.toml
+```
+
+### reminders
+```
+after cloning, run:
+$ uv sync
+$ uv run pre-commit install
+```
+
+### Install & run
+
+During development, `uv sync` installs the project itself in editable mode alongside its
+dependencies, so the `gimme-the-diagram` command is available in the venv without `uv run`:
+
+```bash
+uv sync
+uv run alembic upgrade head
+gimme-the-diagram
+```
+
+If the venv's `bin` directory isn't on your `PATH`, prefix with `uv run`:
+
+```bash
+uv run gimme-the-diagram
+```
+
+To install the CLI outside of a project venv (e.g. as a standalone tool):
+
+```bash
+uv tool install .
+gimme-the-diagram
+```
+
+---
+
+## Setup
+
+### Database (PostgreSQL)
+
+```sql
+CREATE DATABASE example_db;
+CREATE USER example_user WITH ENCRYPTED PASSWORD 'password';
+GRANT ALL PRIVILEGES ON DATABASE example_db TO example_user;
+ALTER DATABASE example_db OWNER TO example_user;
+```
+
+Copy `.env.example` to `.env` and fill in your database credentials.
+
+## Dev commands
+
+### Run with Textual dev console (for debugging)
+
+```bash
+textual console [-v|-x]
+textual run src/gimme_the_diagram/main.py --dev
+```
+
+### Linting & type checking
+
+```bash
+uv run pre-commit run --all-files
+uv run mypy .
+```
+
+### Tests with coverage
+
+```bash
+uv run pytest
+```
+
+---
