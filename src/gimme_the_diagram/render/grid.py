@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections import defaultdict
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 
@@ -27,24 +26,29 @@ _TITLE_STYLE = "title"
 _PK_STYLE = "pk"
 _FK_STYLE = "fk"
 
-_OPPOSITE = {"U": "D", "D": "U", "L": "R", "R": "L"}
+# Direction bits, packed into a single int per cell instead of a set[str]: with large
+# schemas a relationship can span thousands of cells, so avoiding a set() allocation
+# and .add() call per cell (in favor of a dict lookup + int OR) meaningfully matters.
+_BIT_UP, _BIT_DOWN, _BIT_LEFT, _BIT_RIGHT = 1, 2, 4, 8
+_BIT = {"U": _BIT_UP, "D": _BIT_DOWN, "L": _BIT_LEFT, "R": _BIT_RIGHT}
+_OPPOSITE_BIT = {"U": _BIT_DOWN, "D": _BIT_UP, "L": _BIT_RIGHT, "R": _BIT_LEFT}
 _DELTA = {"U": (0, -1), "D": (0, 1), "L": (-1, 0), "R": (1, 0)}
 _MASK_TO_CHAR = {
-    frozenset({"U", "D"}): "│",
-    frozenset({"L", "R"}): "─",
-    frozenset({"D", "R"}): "┌",
-    frozenset({"D", "L"}): "┐",
-    frozenset({"U", "R"}): "└",
-    frozenset({"U", "L"}): "┘",
-    frozenset({"U", "D", "R"}): "├",
-    frozenset({"U", "D", "L"}): "┤",
-    frozenset({"L", "R", "D"}): "┬",
-    frozenset({"L", "R", "U"}): "┴",
-    frozenset({"U", "D", "L", "R"}): "┼",
-    frozenset({"U"}): "│",
-    frozenset({"D"}): "│",
-    frozenset({"L"}): "─",
-    frozenset({"R"}): "─",
+    _BIT_UP | _BIT_DOWN: "│",
+    _BIT_LEFT | _BIT_RIGHT: "─",
+    _BIT_DOWN | _BIT_RIGHT: "┌",
+    _BIT_DOWN | _BIT_LEFT: "┐",
+    _BIT_UP | _BIT_RIGHT: "└",
+    _BIT_UP | _BIT_LEFT: "┘",
+    _BIT_UP | _BIT_DOWN | _BIT_RIGHT: "├",
+    _BIT_UP | _BIT_DOWN | _BIT_LEFT: "┤",
+    _BIT_LEFT | _BIT_RIGHT | _BIT_DOWN: "┬",
+    _BIT_LEFT | _BIT_RIGHT | _BIT_UP: "┴",
+    _BIT_UP | _BIT_DOWN | _BIT_LEFT | _BIT_RIGHT: "┼",
+    _BIT_UP: "│",
+    _BIT_DOWN: "│",
+    _BIT_LEFT: "─",
+    _BIT_RIGHT: "─",
 }
 
 
@@ -218,26 +222,27 @@ def _direction(delta_x: int, delta_y: int) -> str:
     return "U"
 
 
-def _walk_path_bits(points: list[Point]) -> dict[Point, set[str]]:
-    bits: dict[Point, set[str]] = defaultdict(set)
+def _walk_path_bits(points: list[Point], bits: dict[Point, int]) -> None:
+    """Accumulate direction bits for every cell along a polyline, in place."""
     for (x1, y1), (x2, y2) in zip(points, points[1:], strict=False):
         if x1 == x2 and y1 == y2:
             continue
         direction = _direction(x2 - x1, y2 - y1)
+        dbit = _BIT[direction]
+        obit = _OPPOSITE_BIT[direction]
         dx, dy = _DELTA[direction]
         x, y = x1, y1
         while (x, y) != (x2, y2):
             nx, ny = x + dx, y + dy
-            bits[(x, y)].add(direction)
-            bits[(nx, ny)].add(_OPPOSITE[direction])
+            bits[(x, y)] = bits.get((x, y), 0) | dbit
+            bits[(nx, ny)] = bits.get((nx, ny), 0) | obit
             x, y = nx, ny
-    return bits
 
 
 def _draw_relationship_lines(
     grid: CharGrid, schema: Schema, boxes: dict[str, TableBox]
 ) -> None:
-    all_bits: dict[Point, set[str]] = defaultdict(set)
+    all_bits: dict[Point, int] = {}
     endpoints: dict[Point, str] = {}
 
     for relationship in schema.relationships:
@@ -246,20 +251,21 @@ def _draw_relationship_lines(
         if source is None or target is None:
             continue
         points = route(source.rect, target.rect)
-        for point, bits in _walk_path_bits(points).items():
-            all_bits[point] |= bits
+        _walk_path_bits(points, all_bits)
         start_marker, end_marker = _CARDINALITY[relationship.kind]
         endpoints[points[0]] = start_marker
         endpoints[points[-1]] = end_marker
 
-    for point, bits in all_bits.items():
-        char = _MASK_TO_CHAR.get(frozenset(bits))
+    line_style = CellStyle(_LINE_STYLE)
+    for point, mask in all_bits.items():
+        char = _MASK_TO_CHAR.get(mask)
         if char is None:
             continue
-        grid.set(point[0], point[1], Cell(char, CellStyle(_LINE_STYLE)))
+        grid.set(point[0], point[1], Cell(char, line_style))
 
+    marker_style = CellStyle(_LINE_STYLE, bold=True)
     for point, marker in endpoints.items():
-        grid.set(point[0], point[1], Cell(marker, CellStyle(_LINE_STYLE, bold=True)))
+        grid.set(point[0], point[1], Cell(marker, marker_style))
 
 
 def diagram_size(boxes: dict[str, TableBox]) -> tuple[int, int]:

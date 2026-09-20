@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 from gimme_the_diagram.parsing.ddl_parser import parse_ddl
 from gimme_the_diagram.render.grid import (
     ZOOM_COLUMNS,
@@ -98,3 +100,27 @@ def test_crop_grid_beyond_bounds_pads_with_blank() -> None:
     cropped = crop_grid(grid, grid.width - 2, grid.height - 2, 10, 10)
     assert cropped.width == 10
     assert cropped.height == 10
+
+
+def test_large_schema_renders_within_a_bounded_time() -> None:
+    """Regression guard: a ~150-table schema used to take hundreds of ms per render
+    (relationship lines spanning thousands of columns of an unbounded-width layout),
+    which froze the app while dragging a table (each mouse-move re-renders). This
+    should stay comfortably fast even on slow CI machines."""
+    table_count = 150
+    statements = [
+        f"CREATE TABLE t{i} (id INTEGER PRIMARY KEY, name VARCHAR(255));"
+        for i in range(table_count)
+    ]
+    statements += [
+        f"ALTER TABLE t{i} ADD CONSTRAINT fk_{i} FOREIGN KEY (id) REFERENCES t{i - 1}(id);"
+        for i in range(1, table_count)
+    ]
+    schema = parse_ddl("\n".join(statements))
+    layout = build_layout(schema)
+
+    start = time.perf_counter()
+    render_diagram(schema, layout, zoom_level=ZOOM_DETAILED)
+    elapsed = time.perf_counter() - start
+
+    assert elapsed < 1.0

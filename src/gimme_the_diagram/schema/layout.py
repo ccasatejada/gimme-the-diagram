@@ -13,7 +13,10 @@ DEFAULT_ZOOM_LEVEL = 3
 MIN_ZOOM_LEVEL = 1
 MAX_ZOOM_LEVEL = 3
 
-LAYOUT_DIR = Path.home() / ".local" / "share" / "gimme-the-diagram" / "layouts"
+# Kept next to the current working directory (typically the repo you run the app
+# from) rather than under the user's home, so it's easy to find/inspect/wipe during
+# development. It's gitignored - see .gitignore.
+LAYOUT_DIR = Path.cwd() / ".gimme-the-diagram" / "layouts"
 
 
 @dataclass
@@ -61,6 +64,12 @@ class DiagramLayout:
 def layout_path_for_file(source_path: Path) -> Path:
     """Sidecar path next to a DDL file, e.g. schema.sql -> schema.sql.layout.json."""
     return source_path.with_name(source_path.name + ".layout.json")
+
+
+def layout_fallback_path_for_file(source_path: Path) -> Path:
+    """Fallback sidecar path used when the DDL file's own directory isn't writable
+    (e.g. a read-only system path such as a database dump owned by another user)."""
+    return layout_path_for_key(str(source_path.resolve()))
 
 
 def layout_path_for_key(key: str) -> Path:

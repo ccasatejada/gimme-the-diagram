@@ -29,6 +29,7 @@ dependencies = [
 
 [project.scripts]
 gimme-the-diagram = "gimme_the_diagram.main:run"
+gtd = "gimme_the_diagram.main:run"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/gimme_the_diagram"]

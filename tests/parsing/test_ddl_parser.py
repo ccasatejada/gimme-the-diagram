@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from gimme_the_diagram.parsing.ddl_parser import DDLParseError, parse_ddl
+from gimme_the_diagram.parsing.ddl_parser import (
+    DDLParseError,
+    parse_ddl,
+    parse_ddl_auto,
+)
 from gimme_the_diagram.schema.model import RelationshipKind
 
 SAMPLE_DDL = """
@@ -126,3 +130,53 @@ def test_invalid_sql_raises_ddl_parse_error() -> None:
 def test_empty_sql_raises_ddl_parse_error() -> None:
     with pytest.raises(DDLParseError):
         parse_ddl("-- just a comment, no tables")
+
+
+def test_parse_ddl_auto_does_not_require_a_dialect_choice() -> None:
+    sql = "CREATE TABLE authors (id INTEGER PRIMARY KEY, name VARCHAR(255));"
+    schema = parse_ddl_auto(sql)
+    assert {t.name for t in schema.tables} == {"authors"}
+
+
+def test_parse_ddl_auto_raises_when_no_dialect_can_parse_it() -> None:
+    with pytest.raises(DDLParseError):
+        parse_ddl_auto("this is not sql at all !!!")
+
+
+def test_parse_ddl_recovers_tables_from_a_realistic_pg_dump() -> None:
+    """`pg_dump` output routinely mixes real DDL with statements this parser doesn't
+    need (psql meta-commands, PL/pgSQL function bodies, SET/COMMENT statements, ...).
+    A single unparseable line must not prevent every other table from loading."""
+    sql = """
+    \\restrict abc123
+    SET statement_timeout = 0;
+    SELECT pg_catalog.set_config('search_path', '', false);
+
+    CREATE TYPE public.stock_format AS ENUM ('swift', 's3');
+
+    CREATE FUNCTION public.touch_updated_at() RETURNS trigger
+        LANGUAGE plpgsql
+        AS $$
+        BEGIN
+            NEW.updated_at = now();
+            RETURN NEW;
+        END;
+        $$;
+
+    CREATE TABLE public.authors (
+        id INTEGER PRIMARY KEY,
+        name VARCHAR(255) NOT NULL
+    );
+
+    CREATE TABLE public.books (
+        id INTEGER PRIMARY KEY,
+        author_id INTEGER NOT NULL REFERENCES public.authors(id),
+        price NUMERIC(9, 2)
+    );
+
+    COMMENT ON TABLE public.books IS 'catalog of books';
+    \\unrestrict abc123
+    """
+    schema = parse_ddl_auto(sql)
+    assert {t.name for t in schema.tables} == {"authors", "books"}
+    assert len(schema.relationships) == 1

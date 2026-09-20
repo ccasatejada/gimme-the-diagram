@@ -3,7 +3,7 @@
 ![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)
 ![mypy](https://img.shields.io/badge/type%20checker-mypy%20strict-blue?logo=python&logoColor=white)
 ![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)
-![CI](https://github.com/<owner>/<repo>/actions/workflows/ci.yml/badge.svg)      
+![CI](https://github.com/ccasatejada/gimme-the-diagram/actions/workflows/ci.yml/badge.svg)      
 
 
 ## gimme-the-diagram

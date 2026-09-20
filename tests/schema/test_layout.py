@@ -6,6 +6,7 @@ from gimme_the_diagram.parsing.ddl_parser import parse_ddl
 from gimme_the_diagram.schema.layout import (
     DiagramLayout,
     build_layout,
+    layout_fallback_path_for_file,
     layout_path_for_file,
     layout_path_for_key,
     load_layout,
@@ -70,3 +71,17 @@ def test_layout_path_for_key_is_stable() -> None:
     other = layout_path_for_key("different-source")
     assert first == second
     assert first != other
+
+
+def test_layout_fallback_path_for_file_is_stable_and_distinct_per_file(
+    tmp_path: Path,
+) -> None:
+    file_a = tmp_path / "a.sql"
+    file_b = tmp_path / "b.sql"
+    first = layout_fallback_path_for_file(file_a)
+    second = layout_fallback_path_for_file(file_a)
+    other = layout_fallback_path_for_file(file_b)
+    assert first == second
+    assert first != other
+    # the fallback must not sit next to the (possibly unwritable) source file
+    assert first.parent != file_a.parent

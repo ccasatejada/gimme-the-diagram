@@ -6,6 +6,11 @@ from gimme_the_diagram.schema.model import Schema, Table
 
 HORIZONTAL_GAP = 4
 VERTICAL_GAP = 3
+# Without a wrap width, a layer with many tables (e.g. every table with no incoming FK)
+# is laid out as one indefinitely wide row. Besides being unusable to browse, relationship
+# lines between distant tables then span thousands of columns, which is very expensive to
+# render (see render.grid) - so layers wrap into multiple sub-rows past this width.
+MAX_ROW_WIDTH = 200
 
 
 def estimate_box_size(table: Table) -> tuple[int, int]:
@@ -69,6 +74,10 @@ def compute_auto_layout(schema: Schema) -> dict[str, tuple[int, int]]:
         for name in by_layer[level]:
             table = schema.get_table(name)
             width, height = estimate_box_size(table) if table else (20, 5)
+            if x > 1 and x + width > MAX_ROW_WIDTH:
+                x = 1
+                y += row_height + VERTICAL_GAP
+                row_height = 0
             positions[name] = (x, y)
             x += width + HORIZONTAL_GAP
             row_height = max(row_height, height)

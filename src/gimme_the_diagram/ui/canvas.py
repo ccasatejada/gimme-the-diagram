@@ -3,7 +3,6 @@ from __future__ import annotations
 from rich.segment import Segment
 from rich.style import Style
 from textual import events
-from textual.binding import Binding
 from textual.geometry import Size
 from textual.message import Message
 from textual.scroll_view import ScrollView
@@ -47,15 +46,21 @@ def _row_to_strip(row: list[Cell], width: int) -> Strip:
 
 
 class DiagramCanvas(ScrollView, can_focus=True):
-    """Pannable, zoomable ERD canvas with drag & drop of tables."""
+    """Pannable ERD canvas with drag & drop of tables.
 
-    BINDINGS = [
-        Binding("plus,equals_sign", "zoom_in", "Zoom in", show=False),
-        Binding("minus", "zoom_out", "Zoom out", show=False),
-    ]
+    "Detail level" (`detail_up`/`detail_down`) controls how much information is shown
+    inside each table (name only / columns / columns with types). It is persisted as
+    part of the layout.
+    """
 
     class LayoutChanged(Message):
-        """Posted when the user drags a table or changes the zoom level."""
+        """Posted when the user drags a table or changes the detail level."""
+
+    #: Cap on how often a drag re-renders the diagram. Re-rendering can take well over
+    #: a mouse-move's worth of time for a large schema (hundreds of tables); without a
+    #: cap, dragging would queue up a full re-render per pixel of movement and the
+    #: whole app would appear to hang until it worked through the backlog.
+    DRAG_REFRESH_INTERVAL = 1 / 20
 
     def __init__(self, schema: Schema, diagram_layout: DiagramLayout) -> None:
         super().__init__()
@@ -64,6 +69,7 @@ class DiagramCanvas(ScrollView, can_focus=True):
         self._grid: CharGrid | None = None
         self._row_strips: list[Strip] = []
         self._dragged_table: str | None = None
+        self._drag_refresh_pending = False
 
     def on_mount(self) -> None:
         self.refresh_diagram()
@@ -92,19 +98,22 @@ class DiagramCanvas(ScrollView, can_focus=True):
         strip = self._row_strips[virtual_y].crop(scroll_x, scroll_x + self.size.width)
         return strip.extend_cell_length(self.size.width)
 
-    def action_zoom_in(self) -> None:
-        self.zoom_in()
+    def scroll_to_table(self, name: str) -> None:
+        """Pan the canvas so the given table's top-left corner comes into view."""
+        position = self.diagram_layout.positions.get(name)
+        if position is None:
+            return
+        self.scroll_to(position.x, position.y, animate=False)
 
-    def action_zoom_out(self) -> None:
-        self.zoom_out()
+    # -- detail level (how much info is shown inside each table) -----------------
 
-    def zoom_in(self) -> None:
-        self._set_zoom(self.diagram_layout.zoom_level + 1)
+    def detail_up(self) -> None:
+        self._set_detail_level(self.diagram_layout.zoom_level + 1)
 
-    def zoom_out(self) -> None:
-        self._set_zoom(self.diagram_layout.zoom_level - 1)
+    def detail_down(self) -> None:
+        self._set_detail_level(self.diagram_layout.zoom_level - 1)
 
-    def _set_zoom(self, level: int) -> None:
+    def _set_detail_level(self, level: int) -> None:
         clamped = max(MIN_ZOOM, min(MAX_ZOOM, level))
         if clamped == self.diagram_layout.zoom_level:
             return
@@ -112,27 +121,19 @@ class DiagramCanvas(ScrollView, can_focus=True):
         self.refresh_diagram()
         self.post_message(self.LayoutChanged())
 
-    def _table_at(self, virtual_x: int, virtual_y: int) -> str | None:
+    def _table_at(self, world_x: int, world_y: int) -> str | None:
         boxes = compute_table_boxes(
             self.schema, self.diagram_layout, self.diagram_layout.zoom_level
         )
         for name, box in boxes.items():
-            if box.rect.contains(virtual_x, virtual_y):
+            if box.rect.contains(world_x, world_y):
                 return name
         return None
 
-    def on_mouse_scroll_down(self, event: events.MouseScrollDown) -> None:
-        self.zoom_out()
-        event.stop()
-
-    def on_mouse_scroll_up(self, event: events.MouseScrollUp) -> None:
-        self.zoom_in()
-        event.stop()
-
     def on_mouse_down(self, event: events.MouseDown) -> None:
-        virtual_x = event.x + self.scroll_offset.x
-        virtual_y = event.y + self.scroll_offset.y
-        self._dragged_table = self._table_at(virtual_x, virtual_y)
+        world_x = event.x + self.scroll_offset.x
+        world_y = event.y + self.scroll_offset.y
+        self._dragged_table = self._table_at(world_x, world_y)
         self.capture_mouse()
         event.stop()
 
@@ -142,15 +143,36 @@ class DiagramCanvas(ScrollView, can_focus=True):
             if position is not None:
                 position.x = max(0, position.x + event.delta_x)
                 position.y = max(0, position.y + event.delta_y)
-                self.refresh_diagram()
+                self._request_throttled_refresh()
             event.stop()
-        elif self.app.mouse_captured is self:
+            return
+        if self.app.mouse_captured is self:
             self.scroll_relative(x=-event.delta_x, y=-event.delta_y, animate=False)
             event.stop()
+            return
+        # Hovering (not dragging/panning): hint that a table can be picked up.
+        # Requires terminal support for the Kitty pointer-shape protocol.
+        world_x = event.x + self.scroll_offset.x
+        world_y = event.y + self.scroll_offset.y
+        self.styles.pointer = (
+            "grab" if self._table_at(world_x, world_y) is not None else "default"
+        )
+
+    def _request_throttled_refresh(self) -> None:
+        if self._drag_refresh_pending:
+            return
+        self._drag_refresh_pending = True
+        self.set_timer(self.DRAG_REFRESH_INTERVAL, self._run_throttled_refresh)
+
+    def _run_throttled_refresh(self) -> None:
+        self._drag_refresh_pending = False
+        if self._dragged_table is not None:
+            self.refresh_diagram()
 
     def on_mouse_up(self, event: events.MouseUp) -> None:
         self.release_mouse()
         if self._dragged_table is not None:
             self._dragged_table = None
+            self.refresh_diagram()  # make sure the final position is rendered exactly
             self.post_message(self.LayoutChanged())
         event.stop()

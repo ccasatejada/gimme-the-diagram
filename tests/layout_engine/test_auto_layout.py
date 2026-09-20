@@ -48,3 +48,19 @@ def test_cyclic_fk_graph_does_not_crash() -> None:
     schema = parse_ddl(sql)
     positions = compute_auto_layout(schema)
     assert set(positions) == {"a", "b"}
+
+
+def test_many_tables_in_one_layer_wrap_into_multiple_rows() -> None:
+    """A layer with many tables (e.g. every table with no incoming FK) must wrap into
+    several rows instead of one indefinitely wide row - both for usability and because
+    an unbounded width makes relationship-line rendering very expensive (see
+    render.grid)."""
+    sql = "\n".join(f"CREATE TABLE t{i} (id INTEGER PRIMARY KEY);" for i in range(30))
+    schema = parse_ddl(sql)
+    positions = compute_auto_layout(schema)
+
+    max_x = max(x for x, _ in positions.values())
+    distinct_y = {y for _, y in positions.values()}
+
+    assert max_x < 300
+    assert len(distinct_y) > 1

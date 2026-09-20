@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 
 import sqlglot
 from sqlglot import exp
-from sqlglot.errors import ParseError
+from sqlglot.errors import ErrorLevel, ParseError
 from sqlglot.expressions import ColumnDef, Expression
 
 from gimme_the_diagram.schema.model import Column, Schema, Table
@@ -13,6 +14,12 @@ from gimme_the_diagram.schema.relationships import (
     apply_foreign_keys,
     detect_relationships,
 )
+
+# With error_level=WARN, sqlglot logs every statement it can't parse via logger.error()
+# (straight to stderr, through the logging "last resort" handler). That's expected/frequent
+# with real pg_dump files (psql meta-commands, PL/pgSQL function bodies, etc.) and would
+# otherwise corrupt the Textual full-screen display, so it's silenced here.
+logging.getLogger("sqlglot").setLevel(logging.CRITICAL)
 
 
 class DDLParseError(ValueError):
@@ -27,10 +34,18 @@ class _TableBuilder:
     unique_sets: list[frozenset[str]] = field(default_factory=list)
 
 
-def parse_ddl(sql: str, dialect: str | None = None) -> Schema:
-    """Parse raw SQL DDL text (one or more CREATE/ALTER TABLE statements) into a Schema."""
+def parse_ddl(sql: str, dialect: str | None = "postgres") -> Schema:
+    """Parse raw SQL DDL text (one or more CREATE/ALTER TABLE statements) into a Schema.
+
+    Real-world dumps (e.g. `pg_dump` output) routinely contain statements this parser
+    doesn't need to understand (`SET ...`, `COMMENT ON ...`, PL/pgSQL function bodies,
+    psql-only meta-commands like `\\restrict`, ...). Rather than aborting on the first
+    one it can't parse, individual unparseable statements are skipped (`ErrorLevel.WARN`)
+    and only the CREATE/ALTER TABLE statements that *did* parse are used. Parsing only
+    fails outright if no table could be recovered at all.
+    """
     try:
-        statements = sqlglot.parse(sql, dialect=dialect)
+        statements = sqlglot.parse(sql, dialect=dialect, error_level=ErrorLevel.WARN)
     except ParseError as exc:
         raise DDLParseError(str(exc)) from exc
 
@@ -46,9 +61,31 @@ def parse_ddl(sql: str, dialect: str | None = None) -> Schema:
             _consume_alter_table(stmt, fk_edges)
 
     if not tables:
-        raise DDLParseError("no CREATE TABLE statement found")
+        raise DDLParseError("no CREATE TABLE statement could be parsed")
 
     return _build_schema(tables, fk_edges)
+
+
+_AUTO_DETECT_DIALECTS = ("postgres", "sqlite")
+
+
+def parse_ddl_auto(sql: str) -> Schema:
+    """Parse DDL without asking the user for a dialect: try each supported dialect and
+    keep whichever one recovers the most tables."""
+    best: Schema | None = None
+    last_error: DDLParseError | None = None
+    for dialect in _AUTO_DETECT_DIALECTS:
+        try:
+            schema = parse_ddl(sql, dialect=dialect)
+        except DDLParseError as exc:
+            last_error = exc
+            continue
+        if best is None or len(schema.tables) > len(best.tables):
+            best = schema
+    if best is None:
+        assert last_error is not None
+        raise last_error
+    return best
 
 
 def _extract_ref(reference: exp.Reference | None) -> tuple[str, tuple[str, ...]]:
