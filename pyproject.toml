@@ -9,22 +9,16 @@ description = "boilerplate"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
-    "alembic>=1.18.4",
-    "beautifulsoup4>=4.14.3",
     "mypy>=1.19.1",
     "psycopg[binary]>=3.3.2",
     "pytest-cov>=7.0.0",
     "pytest>=9.0.2",
-    "python-dotenv>=1.2.1",
     "reportlab>=5.0.1",
-    "requests>=2.32.5",
-    "rich-pixels>=3.0.1",
     "ruff>=0.14.14",
     "sqlalchemy>=2.0.46",
     "sqlglot>=30.18.0",
     "textual-dev>=1.8.0",
     "textual>=7.4.0",
-    "types-requests>=2.32.4.20260107",
 ]
 
 [project.scripts]
@@ -60,10 +54,9 @@ unfixable = ["B"]
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["E402"]
 "**/{tests,docs,tools}/*" = ["E402", "SIM117"]
-"alembic/*" = ["E402"]
 
 [tool.mypy]
-exclude = ["tests/", "alembic/"]
+exclude = ["tests/"]
 no_implicit_optional = false
 strict = true
 warn_redundant_casts = true
@@ -75,7 +68,7 @@ disable_error_code = ["call-overload", "arg-type", "type-arg", "var-annotated", 
 mypy_path = "stubs"
 
 [[tool.mypy.overrides]]
-module = ["textual.*", "dotenv.*", "rich_pixels.*", "alembic.*", "reportlab.*"]
+module = ["textual.*", "rich_pixels.*", "reportlab.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

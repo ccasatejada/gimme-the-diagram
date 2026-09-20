@@ -28,7 +28,7 @@ gimme-the-diagram
 ## boilerplate
 - python3.14
 - textual (tui)
-- sqlalchemy / alembic
+- sqlalchemy (live PostgreSQL/SQLite schema introspection)
 - uv
 - mypy
 - ruff
@@ -40,13 +40,16 @@ gimme-the-diagram
 
 ```
 .
-├── alembic/                        # migrations (not part of the distributed package)
 ├── src/
-│   └── gimme_the_diagram/        # the installable package
-│       ├── db/
-│       ├── model/
-│       └── main.py                 # Textual app + `run()` entry point
-├── tests/                          # kept out of src/, per PyPA recommendations
+│   └── gimme_the_diagram/          # the installable package
+│       ├── schema/                 # domain model (Table/Column/Relationship) + layout persistence
+│       ├── parsing/                 # DDL parsing (sqlglot) + live DB introspection
+│       ├── layout_engine/           # automatic table placement
+│       ├── render/                  # schema+layout -> character grid (shared by the TUI and PDF export)
+│       ├── export/                  # Mermaid and PDF export
+│       ├── ui/                      # Textual screens/widgets
+│       └── main.py                  # Textual app + `run()` entry point
+├── tests/                           # kept out of src/, per PyPA recommendations
 └── pyproject.toml
 ```
 
@@ -64,7 +67,6 @@ dependencies, so the `gimme-the-diagram` command is available in the venv withou
 
 ```bash
 uv sync
-uv run alembic upgrade head
 gimme-the-diagram
 ```
 
@@ -82,19 +84,6 @@ gimme-the-diagram
 ```
 
 ---
-
-## Setup
-
-### Database (PostgreSQL)
-
-```sql
-CREATE DATABASE example_db;
-CREATE USER example_user WITH ENCRYPTED PASSWORD 'password';
-GRANT ALL PRIVILEGES ON DATABASE example_db TO example_user;
-ALTER DATABASE example_db OWNER TO example_user;
-```
-
-Copy `.env.example` to `.env` and fill in your database credentials.
 
 ## Dev commands
 
