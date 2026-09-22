@@ -1,7 +1,12 @@
 from __future__ import annotations
 
-from gimme_the_diagram.layout_engine.auto_layout import compute_auto_layout
+from gimme_the_diagram.layout_engine.auto_layout import (
+    compute_auto_layout,
+    estimate_box_size,
+)
+from gimme_the_diagram.layout_engine.graphviz_process import GraphvizProcessError
 from gimme_the_diagram.parsing.ddl_parser import parse_ddl
+from gimme_the_diagram.render.geometry import Rect
 
 SAMPLE_DDL = """
 CREATE TABLE authors (id INTEGER PRIMARY KEY, name VARCHAR(255));
@@ -18,12 +23,12 @@ def test_every_table_gets_a_position() -> None:
     assert set(positions) == {"authors", "books"}
 
 
-def test_parent_table_is_above_child_table() -> None:
+def test_parent_table_is_left_of_child_table() -> None:
     schema = parse_ddl(SAMPLE_DDL)
     positions = compute_auto_layout(schema)
-    _, authors_y = positions["authors"]
-    _, books_y = positions["books"]
-    assert authors_y < books_y
+    authors_x, _ = positions["authors"]
+    books_x, _ = positions["books"]
+    assert authors_x < books_x
 
 
 def test_self_referential_fk_does_not_crash() -> None:
@@ -87,11 +92,7 @@ def test_many_children_of_one_parent_wrap_within_their_shared_layer() -> None:
     assert len(distinct_child_y) > 1
 
 
-def test_relationship_proximity_beats_alphabetical_order() -> None:
-    """Two parents (alphabetically "alpha" then "zulu") each have exactly one child.
-    Naming the children so alphabetical order would put them in the *wrong* relative
-    order (relative to their own parent) checks that layout genuinely reorders by
-    relationship, rather than happening to already be sorted correctly."""
+def test_each_parent_precedes_its_child_regardless_of_alphabetical_order() -> None:
     sql = """
     CREATE TABLE alpha (id INTEGER PRIMARY KEY);
     CREATE TABLE zulu (id INTEGER PRIMARY KEY);
@@ -102,14 +103,12 @@ def test_relationship_proximity_beats_alphabetical_order() -> None:
     positions = compute_auto_layout(schema)
 
     alpha_x, _ = positions["alpha"]
-    zulu_x, _ = positions["zulu"]
     last_born_x, _ = positions["last_born"]
+    zulu_x, _ = positions["zulu"]
     first_born_x, _ = positions["first_born"]
 
-    assert alpha_x < zulu_x
-    # last_born (alpha's child) should land near alpha, not near zulu, despite
-    # "first_born" < "last_born" alphabetically.
-    assert last_born_x < first_born_x
+    assert alpha_x < last_born_x
+    assert zulu_x < first_born_x
 
 
 def test_many_to_many_junction_table_is_grouped_with_the_tables_it_connects() -> None:
@@ -131,12 +130,9 @@ def test_many_to_many_junction_table_is_grouped_with_the_tables_it_connects() ->
     schema = parse_ddl(sql)
     positions = compute_auto_layout(schema)
 
-    cluster_max_x = max(positions["films"][0], positions["tags"][0])
-    # the junction table must not be pushed off into its own separate cluster
-    assert positions["films_tags"][0] <= cluster_max_x
-    # and it should land in the layer right below the tables it connects
-    assert positions["films_tags"][1] > positions["films"][1]
-    assert positions["films_tags"][1] > positions["tags"][1]
+    # With a left-to-right layout, both referenced tables precede the junction.
+    assert positions["films_tags"][0] > positions["films"][0]
+    assert positions["films_tags"][0] > positions["tags"][0]
 
 
 def test_unrelated_tables_are_kept_apart_from_a_connected_cluster() -> None:
@@ -151,8 +147,29 @@ def test_unrelated_tables_are_kept_apart_from_a_connected_cluster() -> None:
     schema = parse_ddl(sql)
     positions = compute_auto_layout(schema)
 
-    cluster_max_x = max(positions["parent"][0], positions["child"][0])
-    assert positions["loner_a"][0] > cluster_max_x
-    assert positions["loner_b"][0] > cluster_max_x
-    # the two unrelated singletons are also distinct clusters from each other
-    assert positions["loner_a"][0] != positions["loner_b"][0]
+    assert positions["loner_a"] != positions["loner_b"]
+
+    rectangles = []
+    for table in schema.tables:
+        width, height = estimate_box_size(table)
+        x, y = positions[table.name]
+        rectangles.append((table.name, Rect(x, y, width, height)))
+    for index, (left_name, left) in enumerate(rectangles):
+        for right_name, right in rectangles[index + 1 :]:
+            assert not left.overlaps(right), f"{left_name} overlaps {right_name}"
+
+
+def test_layout_falls_back_if_graphviz_process_crashes(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    schema = parse_ddl(SAMPLE_DDL)
+
+    def fail(*args, **kwargs):  # type: ignore[no-untyped-def]
+        raise GraphvizProcessError("native crash")
+
+    monkeypatch.setattr(
+        "gimme_the_diagram.layout_engine.graphviz_layout.run_graphviz_job", fail
+    )
+
+    positions = compute_auto_layout(schema)
+
+    assert set(positions) == {"authors", "books"}
+    assert positions["authors"] != positions["books"]

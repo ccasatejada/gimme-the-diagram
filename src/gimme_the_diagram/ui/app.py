@@ -9,7 +9,7 @@ from textual.screen import Screen
 from textual.widgets import Button, Footer, Header, Static
 
 from gimme_the_diagram.render.geometry import Rect
-from gimme_the_diagram.render.grid import compute_table_boxes
+from gimme_the_diagram.render.grid import CharGrid, compute_table_boxes
 from gimme_the_diagram.schema.layout import DiagramLayout, save_layout
 from gimme_the_diagram.schema.model import Schema
 from gimme_the_diagram.ui.canvas import DiagramCanvas
@@ -50,6 +50,7 @@ class DiagramScreen(Screen[None]):
         diagram_layout: DiagramLayout,
         layout_path: Path,
         fallback_layout_path: Path | None = None,
+        initial_grid: CharGrid | None = None,
     ) -> None:
         super().__init__()
         self.schema = schema
@@ -57,7 +58,7 @@ class DiagramScreen(Screen[None]):
         self.layout_path = layout_path
         self.fallback_layout_path = fallback_layout_path
         self.sidebar = TableListPanel(schema, diagram_layout)
-        self.canvas = DiagramCanvas(schema, diagram_layout)
+        self.canvas = DiagramCanvas(schema, diagram_layout, initial_grid)
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -68,6 +69,7 @@ class DiagramScreen(Screen[None]):
                 yield Button("Detail −", id="detail-down")
                 yield Button("Detail +", id="detail-up")
                 yield Button("Export Mermaid", id="export-mermaid")
+                yield Button("Export SVG", id="export-svg")
                 yield Button("Export PDF", id="export-pdf")
         with Horizontal(id="body"):
             yield self.sidebar
@@ -122,6 +124,10 @@ class DiagramScreen(Screen[None]):
     def _export_pdf(self) -> None:
         self._open_export("pdf", "diagram.pdf")
 
+    @on(Button.Pressed, "#export-svg")
+    def _export_svg(self) -> None:
+        self._open_export("svg", "diagram.svg")
+
     def _open_export(self, kind: str, default_name: str) -> None:
         scroll = self.canvas.scroll_offset
         size = self.canvas.size
@@ -159,7 +165,14 @@ class MainApp(App[None]):
         diagram_layout: DiagramLayout,
         layout_path: Path,
         fallback_layout_path: Path | None = None,
+        initial_grid: CharGrid | None = None,
     ) -> None:
         self.push_screen(
-            DiagramScreen(schema, diagram_layout, layout_path, fallback_layout_path)
+            DiagramScreen(
+                schema,
+                diagram_layout,
+                layout_path,
+                fallback_layout_path,
+                initial_grid,
+            )
         )

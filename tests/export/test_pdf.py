@@ -24,6 +24,8 @@ def test_export_writes_a_non_empty_pdf(tmp_path: Path) -> None:
 
     assert path.exists()
     assert path.read_bytes().startswith(b"%PDF")
+    # An overview plus at least one detailed vector page.
+    assert path.read_bytes().count(b"/Type /Page") >= 2
 
 
 def test_export_respects_hidden_tables_unless_full_diagram(tmp_path: Path) -> None:

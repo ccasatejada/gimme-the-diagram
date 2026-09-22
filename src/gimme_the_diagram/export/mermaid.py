@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
+from zipfile import ZIP_DEFLATED, ZipFile
 
 from gimme_the_diagram.schema.model import Column, RelationshipKind, Schema
 
@@ -41,6 +43,8 @@ def to_mermaid(
     schema: Schema,
     visible_tables: set[str] | None = None,
     order: list[str] | None = None,
+    *,
+    include_columns: bool = True,
 ) -> str:
     """Render a Schema as a Mermaid `erDiagram` block.
 
@@ -75,8 +79,52 @@ def to_mermaid(
         )
 
     for table in tables:
-        lines.append(f"    {_identifier(table.name)} {{")
-        lines.extend(_column_line(column) for column in table.columns)
-        lines.append("    }")
+        if include_columns:
+            lines.append(f"    {_identifier(table.name)} {{")
+            lines.extend(_column_line(column) for column in table.columns)
+            lines.append("    }")
+        else:
+            # Declaring an empty entity keeps isolated tables in compact exports.
+            lines.append(f"    {_identifier(table.name)} {{}}")
 
     return "\n".join(lines) + "\n"
+
+
+def export_mermaid_bundle(
+    schema: Schema,
+    path: Path,
+    visible_tables: set[str] | None = None,
+    order: list[str] | None = None,
+    *,
+    tables_per_part: int = 40,
+) -> None:
+    """Write a ZIP containing a compact overview and bounded detailed Mermaid parts."""
+    selected = [
+        table.name
+        for table in schema.tables
+        if visible_tables is None or table.name in visible_tables
+    ]
+    if order is not None:
+        rank = {name: index for index, name in enumerate(order)}
+        selected.sort(key=lambda name: rank.get(name, len(rank)))
+    else:
+        selected.sort()
+
+    overview = to_mermaid(schema, set(selected), order, include_columns=False)
+    chunks = [
+        selected[index : index + tables_per_part]
+        for index in range(0, len(selected), tables_per_part)
+    ]
+    index_lines = ["# Mermaid schema export", "", "- [Overview](overview.mmd)"]
+    with ZipFile(path, "w", compression=ZIP_DEFLATED) as archive:
+        archive.writestr("overview.mmd", overview)
+        for number, names in enumerate(chunks, start=1):
+            filename = f"parts/diagram-{number:03d}.mmd"
+            archive.writestr(
+                filename,
+                to_mermaid(schema, set(names), names, include_columns=True),
+            )
+            index_lines.append(
+                f"- [Part {number:03d} ({len(names)} tables)]({filename})"
+            )
+        archive.writestr("README.md", "\n".join(index_lines) + "\n")

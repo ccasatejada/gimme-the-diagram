@@ -11,6 +11,7 @@ requires-python = ">=3.14"
 dependencies = [
     "mypy>=1.19.1",
     "psycopg[binary]>=3.3.2",
+    "pygraphviz>=2.0.2",
     "pytest-cov>=7.0.0",
     "pytest>=9.0.2",
     "reportlab>=5.0.1",
@@ -68,7 +69,7 @@ disable_error_code = ["call-overload", "arg-type", "type-arg", "var-annotated", 
 mypy_path = "stubs"
 
 [[tool.mypy.overrides]]
-module = ["textual.*", "rich_pixels.*", "reportlab.*"]
+module = ["textual.*", "rich_pixels.*", "reportlab.*", "pygraphviz.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

@@ -4,7 +4,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 
 from gimme_the_diagram.render.geometry import Point, Rect
-from gimme_the_diagram.render.routing import route
+from gimme_the_diagram.render.routing import route_relationships
 from gimme_the_diagram.schema.layout import DiagramLayout
 from gimme_the_diagram.schema.model import RelationshipKind, Schema, Table
 
@@ -240,17 +240,17 @@ def _walk_path_bits(points: list[Point], bits: dict[Point, int]) -> None:
 
 
 def _draw_relationship_lines(
-    grid: CharGrid, schema: Schema, boxes: dict[str, TableBox]
+    grid: CharGrid,
+    schema: Schema,
+    routes: dict[int, list[Point]],
 ) -> None:
     all_bits: dict[Point, int] = {}
     endpoints: dict[Point, str] = {}
 
-    for relationship in schema.relationships:
-        source = boxes.get(relationship.left_table)
-        target = boxes.get(relationship.right_table)
-        if source is None or target is None:
+    for index, relationship in enumerate(schema.relationships):
+        points = routes.get(index)
+        if points is None:
             continue
-        points = route(source.rect, target.rect)
         _walk_path_bits(points, all_bits)
         start_marker, end_marker = _CARDINALITY[relationship.kind]
         endpoints[points[0]] = start_marker
@@ -268,11 +268,17 @@ def _draw_relationship_lines(
         grid.set(point[0], point[1], Cell(marker, marker_style))
 
 
-def diagram_size(boxes: dict[str, TableBox]) -> tuple[int, int]:
+def diagram_size(
+    boxes: dict[str, TableBox], routes: dict[int, list[Point]] | None = None
+) -> tuple[int, int]:
     if not boxes:
         return (1, 1)
     width = max(box.rect.right for box in boxes.values()) + 1
     height = max(box.rect.bottom for box in boxes.values()) + 1
+    route_points = [point for points in (routes or {}).values() for point in points]
+    if route_points:
+        width = max(width, max(x for x, _ in route_points) + 1)
+        height = max(height, max(y for _, y in route_points) + 1)
     return width, height
 
 
@@ -284,10 +290,13 @@ def render_diagram(
     level = max(MIN_ZOOM, min(MAX_ZOOM, level))
 
     boxes = compute_table_boxes(schema, layout, level)
-    width, height = diagram_size(boxes)
+    routes = route_relationships(
+        {name: box.rect for name, box in boxes.items()}, schema.relationships
+    )
+    width, height = diagram_size(boxes, routes)
     grid = CharGrid(width, height)
 
-    _draw_relationship_lines(grid, schema, boxes)
+    _draw_relationship_lines(grid, schema, routes)
     for box in boxes.values():
         _draw_box(grid, box)
 

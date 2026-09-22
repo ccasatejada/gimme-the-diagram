@@ -20,6 +20,8 @@ many-to-many relationships (auto-detected, including many-to-many junction table
   level of detail shown per table).
 - Export to Mermaid (`erDiagram`, embeddable in Markdown) or to a monospace, terminal-faithful
   PDF — either just what's currently visible or the whole diagram.
+- Place tables with Graphviz `dot` (layering and crossing reduction), then route all
+  visible relationships together with orthogonal, obstacle-aware Graphviz paths.
 
 ```bash
 gimme-the-diagram
@@ -69,6 +71,10 @@ dependencies, so the `gimme-the-diagram` command is available in the venv withou
 uv sync
 gimme-the-diagram
 ```
+
+PyGraphviz requires Graphviz. On platforms without a PyGraphviz binary wheel, install
+the Graphviz executable and development headers before running `uv sync` (for example,
+`graphviz` and `libgraphviz-dev` on Debian/Ubuntu).
 
 If the venv's `bin` directory isn't on your `PATH`, prefix with `uv run`:
 

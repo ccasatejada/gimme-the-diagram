@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from gimme_the_diagram.export.mermaid import to_mermaid
+from zipfile import ZipFile
+
+from gimme_the_diagram.export.mermaid import export_mermaid_bundle, to_mermaid
 from gimme_the_diagram.parsing.ddl_parser import parse_ddl
 
 SAMPLE_DDL = """
@@ -79,3 +81,35 @@ def test_order_controls_entity_declaration_order() -> None:
     schema = parse_ddl(SAMPLE_DDL)
     output = to_mermaid(schema, order=["books", "authors"])
     assert output.index("books {") < output.index("authors {")
+
+
+def test_compact_export_omits_columns_but_keeps_entities() -> None:
+    schema = parse_ddl(SAMPLE_DDL)
+
+    output = to_mermaid(schema, include_columns=False)
+
+    assert "authors {}" in output
+    assert "books {}" in output
+    assert "author_id" not in output
+    assert "authors ||--o{ books" in output
+
+
+def test_split_bundle_contains_overview_and_bounded_parts(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    sql = "\n".join(
+        f"CREATE TABLE table_{index} (id INTEGER PRIMARY KEY);" for index in range(9)
+    )
+    schema = parse_ddl(sql)
+    path = tmp_path / "diagram.zip"
+
+    export_mermaid_bundle(schema, path, tables_per_part=4)
+
+    with ZipFile(path) as archive:
+        names = set(archive.namelist())
+        assert "overview.mmd" in names
+        assert "README.md" in names
+        assert {
+            "parts/diagram-001.mmd",
+            "parts/diagram-002.mmd",
+            "parts/diagram-003.mmd",
+        } <= names
+        assert archive.read("overview.mmd").startswith(b"erDiagram")

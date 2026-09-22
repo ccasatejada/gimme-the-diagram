@@ -62,17 +62,25 @@ class DiagramCanvas(ScrollView, can_focus=True):
     #: whole app would appear to hang until it worked through the backlog.
     DRAG_REFRESH_INTERVAL = 1 / 20
 
-    def __init__(self, schema: Schema, diagram_layout: DiagramLayout) -> None:
+    def __init__(
+        self,
+        schema: Schema,
+        diagram_layout: DiagramLayout,
+        initial_grid: CharGrid | None = None,
+    ) -> None:
         super().__init__()
         self.schema = schema
         self.diagram_layout = diagram_layout
-        self._grid: CharGrid | None = None
+        self._grid: CharGrid | None = initial_grid
         self._row_strips: list[Strip] = []
         self._dragged_table: str | None = None
         self._drag_refresh_pending = False
 
     def on_mount(self) -> None:
-        self.refresh_diagram()
+        if self._grid is None:
+            self.refresh_diagram()
+        else:
+            self._apply_grid(self._grid)
 
     def set_schema(self, schema: Schema, diagram_layout: DiagramLayout) -> None:
         self.schema = schema
@@ -80,7 +88,9 @@ class DiagramCanvas(ScrollView, can_focus=True):
         self.refresh_diagram()
 
     def refresh_diagram(self) -> None:
-        grid = render_diagram(self.schema, self.diagram_layout)
+        self._apply_grid(render_diagram(self.schema, self.diagram_layout))
+
+    def _apply_grid(self, grid: CharGrid) -> None:
         self._grid = grid
         self._row_strips = [
             _row_to_strip(grid.rows[y], grid.width) for y in range(grid.height)
@@ -90,13 +100,13 @@ class DiagramCanvas(ScrollView, can_focus=True):
 
     def render_line(self, y: int) -> Strip:
         if self._grid is None:
-            return Strip.blank(self.size.width)
+            return Strip.blank(self.size.width, Style())
         scroll_x, scroll_y = self.scroll_offset
         virtual_y = scroll_y + y
         if virtual_y >= len(self._row_strips):
-            return Strip.blank(self.size.width)
+            return Strip.blank(self.size.width, Style())
         strip = self._row_strips[virtual_y].crop(scroll_x, scroll_x + self.size.width)
-        return strip.extend_cell_length(self.size.width)
+        return strip.extend_cell_length(self.size.width, Style())
 
     def scroll_to_table(self, name: str) -> None:
         """Pan the canvas so the given table's top-left corner comes into view."""
